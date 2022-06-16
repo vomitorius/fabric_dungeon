@@ -1,6 +1,5 @@
 var canvas = new fabric.StaticCanvas('c');
 const DungeonFactory = require('dungeon-factory');
-var monitor = require('website-monitor');
 
 (canvas.renderOnAddRemove = false), (canvas.selection = false);
 canvas.backgroundColor = '#3C3C3C';
