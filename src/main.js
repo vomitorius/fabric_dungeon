@@ -1,11 +1,12 @@
-import * as fabric from 'fabric';
+import { Canvas, FabricImage, FabricObject } from 'fabric';
 import Dungeoneer from 'dungeoneer';
 
 // Initialize canvas
-const canvas = new fabric.StaticCanvas('c');
-canvas.renderOnAddRemove = false;
-canvas.selection = false;
-canvas.backgroundColor = '#3C3C3C';
+const canvas = new Canvas('c', {
+  selection: false,
+  backgroundColor: '#3C3C3C',
+  renderOnAddRemove: false
+});
 
 // Make canvas responsive to container
 const container = document.getElementById('content');
@@ -15,7 +16,8 @@ canvas.setHeight(container.offsetHeight);
 // Make canvas globally accessible for debugging
 window.fabricCanvas = canvas;
 
-fabric.Object.prototype.transparentCorners = false;
+// Set default object properties
+FabricObject.prototype.transparentCorners = false;
 
 // Game state
 let knightPlaced = false;
@@ -28,7 +30,7 @@ let left = 0, right = 0, up = 0, down = 0;
 let x, y;
 const speed = 32;
 
-function startGame() {
+async function startGame() {
   // Generate dungeon using dungeoneer
   dungeon = Dungeoneer.build({
     width: 2 * Math.floor((canvas.width / 32 - 1) / 2) + 1,
@@ -42,7 +44,7 @@ function startGame() {
     for (let j = 0; j < dungeon.tiles[i].length; j++) {
       if (!knightPlaced && dungeon.tiles[i][j].type === 'floor') {
         knightPlaced = true;
-        createSprite('knight', i, j);
+        await createSprite('knight', i, j);
         x = i * 32;
         y = j * 32;
         console.log('Knight placed at:', x, y);
@@ -50,12 +52,12 @@ function startGame() {
       }
       
       if (dungeon.tiles[i][j].type === 'wall') {
-        createSprite('wall', i, j);
+        await createSprite('wall', i, j);
         elemCount++;
       }
       
       if (dungeon.tiles[i][j].type === 'door') {
-        createSprite('door', i, j);
+        await createSprite('door', i, j);
         elemCount++;
       }
     }
@@ -67,7 +69,7 @@ function startGame() {
       if (!finishPlaced && dungeon.tiles[i][j].type === 'floor') {
         dungeon.tiles[i][j].type = 'finish';
         finishPlaced = true;
-        createSprite('finish', i, j);
+        await createSprite('finish', i, j);
         elemCount++;
         break;
       }
@@ -75,19 +77,17 @@ function startGame() {
     if (finishPlaced) break;
   }
 
-  // Wait for all sprites to load before rendering
-  const renderInterval = setInterval(() => {
-    if (canvas.getObjects().length === elemCount) {
-      canvas.renderAll();
-      clearInterval(renderInterval);
-      requestAnimationFrame(render);
-    }
-  }, 100);
+  // Render the canvas after all images are loaded
+  canvas.renderAll();
+  requestAnimationFrame(render);
 }
 
-function createSprite(type, left, top) {
+async function createSprite(type, left, top) {
   console.log(`Creating sprite: ${type} at ${left}, ${top}`);
-  fabric.Image.fromURL(`/img/${type}.png`, (img) => {
+  try {
+    const img = await FabricImage.fromURL(`/img/${type}.png`, {
+      crossOrigin: 'anonymous'
+    });
     console.log(`Image loaded: ${type}`, img);
     img.set({
       width: 32,
@@ -106,7 +106,9 @@ function createSprite(type, left, top) {
     
     canvas.add(img);
     console.log(`Added ${type} to canvas, total objects:`, canvas.getObjects().length);
-  }, { crossOrigin: 'anonymous' });
+  } catch (error) {
+    console.error(`Failed to load image: ${type}`, error);
+  }
 }
 
 // Keyboard event handlers
@@ -168,9 +170,9 @@ function render() {
       // Check for win condition
       if (tileType === 'finish') {
         console.log('You win! Generating new dungeon...');
-        setTimeout(() => {
+        setTimeout(async () => {
           resetGame();
-          startGame();
+          await startGame();
         }, 1000);
       }
     }
@@ -195,16 +197,16 @@ function resetGame() {
 }
 
 // Initialize game when DOM is ready
-document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener('DOMContentLoaded', async () => {
   console.log('Starting Fabric Dungeon...');
-  startGame();
+  await startGame();
 });
 
 // Generate button handler
-document.getElementById('generate').addEventListener('click', () => {
+document.getElementById('generate').addEventListener('click', async () => {
   console.log('Generating new dungeon...');
   resetGame();
-  startGame();
+  await startGame();
 });
 
 // Handle window resize
