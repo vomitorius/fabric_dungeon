@@ -118,13 +118,20 @@
     .dpad-down { grid-column: 2; grid-row: 3; }
 
     /* Show gamepad on touch devices */
-    @media (hover: none) and (pointer: coarse) {
+    @media (hover: none) and (pointer: coarse), (max-width: 768px) {
       .virtual-gamepad {
-        display: block;
+        display: block !important;
       }
       
       .instructions {
         padding-bottom: 140px; /* Make room for gamepad */
+      }
+    }
+    
+    /* Force show on very small screens */
+    @media (max-width: 480px) {
+      .virtual-gamepad {
+        display: block !important;
       }
     }
 

@@ -110,28 +110,26 @@ async function startGame() {
     height: Math.max(15, dungeonHeight),
   });
 
-  let elemCount = 0;
+  // Collect all sprites to create in parallel
+  const spritesToCreate = [];
   
   // Place knight at first floor tile
   for (let i = 0; i < dungeon.tiles.length; i++) {
     for (let j = 0; j < dungeon.tiles[i].length; j++) {
       if (!knightPlaced && dungeon.tiles[i][j].type === 'floor') {
         knightPlaced = true;
-        await createSprite('knight', i, j);
+        spritesToCreate.push({ type: 'knight', x: i, y: j, isKnight: true });
         x = i * tileSize;
         y = j * tileSize;
-        console.log('Knight placed at:', x, y);
-        elemCount++;
+        console.log('Knight will be placed at:', x, y);
       }
       
       if (dungeon.tiles[i][j].type === 'wall') {
-        await createSprite('wall', i, j);
-        elemCount++;
+        spritesToCreate.push({ type: 'wall', x: i, y: j });
       }
       
       if (dungeon.tiles[i][j].type === 'door') {
-        await createSprite('door', i, j);
-        elemCount++;
+        spritesToCreate.push({ type: 'door', x: i, y: j });
       }
     }
   }
@@ -142,17 +140,65 @@ async function startGame() {
       if (!finishPlaced && dungeon.tiles[i][j].type === 'floor') {
         dungeon.tiles[i][j].type = 'finish';
         finishPlaced = true;
-        await createSprite('finish', i, j);
-        elemCount++;
+        spritesToCreate.push({ type: 'finish', x: i, y: j });
         break;
       }
     }
     if (finishPlaced) break;
   }
 
+  console.log(`Creating ${spritesToCreate.length} sprites in batches...`);
+  
+  // Create sprites in parallel batches for better performance
+  const batchSize = 20;
+  for (let i = 0; i < spritesToCreate.length; i += batchSize) {
+    const batch = spritesToCreate.slice(i, i + batchSize);
+    
+    // Process batch in parallel
+    const spritePromises = batch.map(sprite => 
+      createSpriteOptimized(sprite.type, sprite.x, sprite.y, sprite.isKnight)
+    );
+    
+    await Promise.all(spritePromises);
+  }
+
+  console.log('All sprites created, rendering canvas...');
   // Render the canvas after all images are loaded
   canvas.renderAll();
   requestAnimationFrame(render);
+}
+
+async function createSpriteOptimized(type, left, top, isKnight = false) {
+  try {
+    const img = await FabricImage.fromURL(`/img/${type}.png`, {
+      crossOrigin: 'anonymous'
+    });
+    
+    // Ensure proper sprite sizing and centering
+    img.set({
+      width: tileSize,
+      height: tileSize,
+      left: left * tileSize,
+      top: top * tileSize,
+      originX: 'left',
+      originY: 'top',
+      selectable: false,
+      // Ensure sprites scale properly and maintain aspect ratio
+      scaleX: tileSize / img.width,
+      scaleY: tileSize / img.height
+    });
+    
+    if (isKnight) {
+      knight = img;
+      console.log('Knight sprite created and assigned');
+    }
+    
+    canvas.add(img);
+    return img;
+  } catch (error) {
+    console.error(`Failed to load image: ${type}`, error);
+    return null;
+  }
 }
 
 async function createSprite(type, left, top) {
@@ -162,6 +208,8 @@ async function createSprite(type, left, top) {
       crossOrigin: 'anonymous'
     });
     console.log(`Image loaded: ${type}`, img);
+    
+    // Ensure proper sprite sizing and centering
     img.set({
       width: tileSize,
       height: tileSize,
@@ -169,7 +217,10 @@ async function createSprite(type, left, top) {
       top: top * tileSize,
       originX: 'left',
       originY: 'top',
-      selectable: false
+      selectable: false,
+      // Ensure sprites scale properly and maintain aspect ratio
+      scaleX: tileSize / img.width,
+      scaleY: tileSize / img.height
     });
     
     if (type === 'knight') {
@@ -256,10 +307,10 @@ canvasElement.addEventListener('touchend', (e) => {
     if (Math.abs(diffX) > minSwipeDistance) {
       if (diffX > 0) {
         // Swipe left
-        triggerMovement('left');
+        triggerSingleStepMovement('left');
       } else {
         // Swipe right
-        triggerMovement('right');
+        triggerSingleStepMovement('right');
       }
     }
   } else {
@@ -267,10 +318,10 @@ canvasElement.addEventListener('touchend', (e) => {
     if (Math.abs(diffY) > minSwipeDistance) {
       if (diffY > 0) {
         // Swipe up
-        triggerMovement('up');
+        triggerSingleStepMovement('up');
       } else {
         // Swipe down
-        triggerMovement('down');
+        triggerSingleStepMovement('down');
       }
     }
   }
@@ -286,46 +337,39 @@ gamepadButtons.forEach(button => {
   const direction = button.dataset.direction;
   if (!direction) return;
   
+  // Use click for single-step movement instead of continuous press
   button.addEventListener('touchstart', (e) => {
     e.preventDefault();
-    gamepadPressed.add(direction);
-    setDirectionState(direction, 1);
     button.classList.add('active');
+    // Trigger single movement step
+    triggerSingleStepMovement(direction);
   });
   
   button.addEventListener('touchend', (e) => {
     e.preventDefault();
-    gamepadPressed.delete(direction);
-    setDirectionState(direction, 0);
     button.classList.remove('active');
   });
   
   button.addEventListener('touchcancel', (e) => {
     e.preventDefault();
-    gamepadPressed.delete(direction);
-    setDirectionState(direction, 0);
     button.classList.remove('active');
   });
   
   // Also support mouse events for desktop testing
   button.addEventListener('mousedown', (e) => {
     e.preventDefault();
-    gamepadPressed.add(direction);
-    setDirectionState(direction, 1);
     button.classList.add('active');
+    // Trigger single movement step
+    triggerSingleStepMovement(direction);
   });
   
   button.addEventListener('mouseup', (e) => {
     e.preventDefault();
-    gamepadPressed.delete(direction);
-    setDirectionState(direction, 0);
     button.classList.remove('active');
   });
   
   button.addEventListener('mouseleave', (e) => {
     e.preventDefault();
-    gamepadPressed.delete(direction);
-    setDirectionState(direction, 0);
     button.classList.remove('active');
   });
 });
@@ -354,6 +398,62 @@ function triggerMovement(direction) {
   setTimeout(() => {
     setDirectionState(direction, 0);
   }, 100);
+}
+
+function triggerSingleStepMovement(direction) {
+  // Single step movement for touch controls
+  if (!knight || !dungeon) {
+    return;
+  }
+
+  let newX = x;
+  let newY = y;
+  
+  switch (direction) {
+    case 'left':
+      newX = x - speed;
+      break;
+    case 'up':
+      newY = y - speed;
+      break;
+    case 'right':
+      newX = x + speed;
+      break;
+    case 'down':
+      newY = y + speed;
+      break;
+  }
+  
+  const moveX = Math.floor(newX / tileSize);
+  const moveY = Math.floor(newY / tileSize);
+  
+  // Check bounds and tile type
+  if (moveX >= 0 && moveX < dungeon.tiles.length && 
+      moveY >= 0 && moveY < dungeon.tiles[moveX].length) {
+    
+    const tileType = dungeon.tiles[moveX][moveY].type;
+    
+    if (tileType === 'floor' || tileType === 'door' || tileType === 'finish') {
+      x = newX;
+      y = newY;
+      
+      knight.set({
+        left: x,
+        top: y
+      });
+      
+      canvas.renderAll();
+      
+      // Check for win condition
+      if (tileType === 'finish') {
+        console.log('You win! Generating new dungeon...');
+        setTimeout(async () => {
+          resetGame();
+          await startGame();
+        }, 1000);
+      }
+    }
+  }
 }
 
 // Game render loop
@@ -399,10 +499,18 @@ function render() {
 function resetGame() {
   knightPlaced = false;
   finishPlaced = false;
-  knight = null;
+  knight = null;  // This will be reassigned in startGame
   dungeon = null;
+  
+  // Clear canvas but preserve background
   canvas.clear();
   canvas.backgroundColor = '#3C3C3C';
+  
+  // Reset movement states
+  left = 0; 
+  right = 0; 
+  up = 0; 
+  down = 0;
 }
 
 // Initialize game when DOM is ready
