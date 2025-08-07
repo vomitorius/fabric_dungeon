@@ -8,10 +8,45 @@ const canvas = new Canvas('c', {
   renderOnAddRemove: false
 });
 
-// Make canvas responsive to container
-const container = document.getElementById('content');
-canvas.setWidth(container.offsetWidth);
-canvas.setHeight(container.offsetHeight);
+// Calculate responsive canvas size
+function getResponsiveCanvasSize() {
+  const container = document.getElementById('content');
+  const containerWidth = container.offsetWidth - 30; // Account for padding
+  const maxWidth = Math.min(containerWidth, 1050);
+  
+  // Maintain aspect ratio but adapt to screen
+  let width = maxWidth;
+  let height = Math.floor(maxWidth * 0.67); // Roughly 3:2 aspect ratio
+  
+  // Ensure minimum viable size
+  const minTileSize = 16;
+  const minGridWidth = 21;
+  const minGridHeight = 15;
+  
+  if (width < minGridWidth * minTileSize) {
+    width = minGridWidth * minTileSize;
+  }
+  if (height < minGridHeight * minTileSize) {
+    height = minGridHeight * minTileSize;
+  }
+  
+  return { width, height };
+}
+
+// Set responsive canvas size
+function setResponsiveCanvasSize() {
+  const { width, height } = getResponsiveCanvasSize();
+  canvas.setWidth(width);
+  canvas.setHeight(height);
+  
+  // Update CSS to ensure proper scaling
+  const canvasElement = document.getElementById('c');
+  canvasElement.style.maxWidth = '100%';
+  canvasElement.style.height = 'auto';
+}
+
+// Initialize canvas size
+setResponsiveCanvasSize();
 
 // Make canvas globally accessible for debugging
 window.fabricCanvas = canvas;
@@ -24,17 +59,55 @@ let knightPlaced = false;
 let knight = null;
 let dungeon = null;
 let finishPlaced = false;
+let tileSize = 32;
 
 // Movement state
 let left = 0, right = 0, up = 0, down = 0;
 let x, y;
-const speed = 32;
+let speed = tileSize;
+
+// Touch and gamepad state
+let touchStartX = null;
+let touchStartY = null;
+let gamepadPressed = new Set();
+
+// Calculate optimal tile size based on canvas size
+function calculateTileSize() {
+  const { width, height } = getResponsiveCanvasSize();
+  
+  // Aim for a reasonable grid size (e.g., 21x15 minimum)
+  const maxTilesWidth = Math.floor(width / 16); // Minimum 16px tiles
+  const maxTilesHeight = Math.floor(height / 16);
+  
+  // But prefer larger tiles on bigger screens
+  let preferredTileSize = Math.min(
+    Math.floor(width / 33), // 33 tiles wide maximum
+    Math.floor(height / 23)  // 23 tiles high maximum
+  );
+  
+  // Ensure reasonable bounds
+  preferredTileSize = Math.max(16, Math.min(preferredTileSize, 48));
+  
+  return preferredTileSize;
+}
 
 async function startGame() {
-  // Generate dungeon using dungeoneer
+  // Calculate responsive tile size and canvas size
+  tileSize = calculateTileSize();
+  speed = tileSize;
+  setResponsiveCanvasSize();
+  
+  // Generate dungeon using dungeoneer with responsive dimensions
+  const maxTilesWidth = Math.floor(canvas.width / tileSize);
+  const maxTilesHeight = Math.floor(canvas.height / tileSize);
+  
+  // Ensure odd dimensions for proper maze generation
+  const dungeonWidth = 2 * Math.floor((maxTilesWidth - 1) / 2) + 1;
+  const dungeonHeight = 2 * Math.floor((maxTilesHeight - 1) / 2) + 1;
+
   dungeon = Dungeoneer.build({
-    width: 2 * Math.floor((canvas.width / 32 - 1) / 2) + 1,
-    height: 2 * Math.floor((canvas.height / 32 - 1) / 2) + 1,
+    width: Math.max(21, dungeonWidth), // Minimum playable size
+    height: Math.max(15, dungeonHeight),
   });
 
   let elemCount = 0;
@@ -45,8 +118,8 @@ async function startGame() {
       if (!knightPlaced && dungeon.tiles[i][j].type === 'floor') {
         knightPlaced = true;
         await createSprite('knight', i, j);
-        x = i * 32;
-        y = j * 32;
+        x = i * tileSize;
+        y = j * tileSize;
         console.log('Knight placed at:', x, y);
         elemCount++;
       }
@@ -90,10 +163,10 @@ async function createSprite(type, left, top) {
     });
     console.log(`Image loaded: ${type}`, img);
     img.set({
-      width: 32,
-      height: 32,
-      left: left * 32,
-      top: top * 32,
+      width: tileSize,
+      height: tileSize,
+      left: left * tileSize,
+      top: top * tileSize,
       originX: 'left',
       originY: 'top',
       selectable: false
@@ -147,6 +220,142 @@ document.addEventListener('keydown', (e) => {
   e.preventDefault();
 });
 
+// Touch event handlers for swipe gestures
+const canvasElement = document.getElementById('c');
+
+canvasElement.addEventListener('touchstart', (e) => {
+  e.preventDefault();
+  const touch = e.touches[0];
+  touchStartX = touch.clientX;
+  touchStartY = touch.clientY;
+}, { passive: false });
+
+canvasElement.addEventListener('touchmove', (e) => {
+  e.preventDefault();
+}, { passive: false });
+
+canvasElement.addEventListener('touchend', (e) => {
+  e.preventDefault();
+  
+  if (touchStartX === null || touchStartY === null) {
+    return;
+  }
+  
+  const touch = e.changedTouches[0];
+  const touchEndX = touch.clientX;
+  const touchEndY = touch.clientY;
+  
+  const diffX = touchStartX - touchEndX;
+  const diffY = touchStartY - touchEndY;
+  
+  // Minimum swipe distance
+  const minSwipeDistance = 30;
+  
+  if (Math.abs(diffX) > Math.abs(diffY)) {
+    // Horizontal swipe
+    if (Math.abs(diffX) > minSwipeDistance) {
+      if (diffX > 0) {
+        // Swipe left
+        triggerMovement('left');
+      } else {
+        // Swipe right
+        triggerMovement('right');
+      }
+    }
+  } else {
+    // Vertical swipe
+    if (Math.abs(diffY) > minSwipeDistance) {
+      if (diffY > 0) {
+        // Swipe up
+        triggerMovement('up');
+      } else {
+        // Swipe down
+        triggerMovement('down');
+      }
+    }
+  }
+  
+  touchStartX = null;
+  touchStartY = null;
+}, { passive: false });
+
+// Virtual gamepad event handlers
+const gamepadButtons = document.querySelectorAll('.dpad-btn');
+
+gamepadButtons.forEach(button => {
+  const direction = button.dataset.direction;
+  if (!direction) return;
+  
+  button.addEventListener('touchstart', (e) => {
+    e.preventDefault();
+    gamepadPressed.add(direction);
+    setDirectionState(direction, 1);
+    button.classList.add('active');
+  });
+  
+  button.addEventListener('touchend', (e) => {
+    e.preventDefault();
+    gamepadPressed.delete(direction);
+    setDirectionState(direction, 0);
+    button.classList.remove('active');
+  });
+  
+  button.addEventListener('touchcancel', (e) => {
+    e.preventDefault();
+    gamepadPressed.delete(direction);
+    setDirectionState(direction, 0);
+    button.classList.remove('active');
+  });
+  
+  // Also support mouse events for desktop testing
+  button.addEventListener('mousedown', (e) => {
+    e.preventDefault();
+    gamepadPressed.add(direction);
+    setDirectionState(direction, 1);
+    button.classList.add('active');
+  });
+  
+  button.addEventListener('mouseup', (e) => {
+    e.preventDefault();
+    gamepadPressed.delete(direction);
+    setDirectionState(direction, 0);
+    button.classList.remove('active');
+  });
+  
+  button.addEventListener('mouseleave', (e) => {
+    e.preventDefault();
+    gamepadPressed.delete(direction);
+    setDirectionState(direction, 0);
+    button.classList.remove('active');
+  });
+});
+
+// Helper functions for movement
+function setDirectionState(direction, state) {
+  switch (direction) {
+    case 'left':
+      left = state;
+      break;
+    case 'up':
+      up = state;
+      break;
+    case 'right':
+      right = state;
+      break;
+    case 'down':
+      down = state;
+      break;
+  }
+}
+
+function triggerMovement(direction) {
+  // Quick movement trigger for swipe gestures
+  setDirectionState(direction, 1);
+  setTimeout(() => {
+    setDirectionState(direction, 0);
+  }, 100);
+}
+
 // Game render loop
 function render() {
   if (!knight || !dungeon) {
@@ -154,8 +363,8 @@ function render() {
     return;
   }
 
-  const moveX = Math.floor((x + (right - left) * speed) / 32);
-  const moveY = Math.floor((y + (down - up) * speed) / 32);
+  const moveX = Math.floor((x + (right - left) * speed) / tileSize);
+  const moveY = Math.floor((y + (down - up) * speed) / tileSize);
 
   // Check bounds and tile type
   if (moveX >= 0 && moveX < dungeon.tiles.length && 
@@ -211,8 +420,19 @@ document.getElementById('generate').addEventListener('click', async () => {
 
 // Handle window resize
 window.addEventListener('resize', () => {
-  const container = document.getElementById('content');
-  canvas.setWidth(container.offsetWidth);
-  canvas.setHeight(container.offsetHeight);
-  canvas.renderAll();
+  // Recalculate tile size and canvas dimensions
+  const newTileSize = calculateTileSize();
+  
+  if (newTileSize !== tileSize) {
+    // Only regenerate if tile size changed significantly
+    console.log('Significant size change detected, regenerating game...');
+    resetGame();
+    setTimeout(async () => {
+      await startGame();
+    }, 100);
+  } else {
+    // Just resize canvas
+    setResponsiveCanvasSize();
+    canvas.renderAll();
+  }
 });
