@@ -12,13 +12,15 @@
     body {
       padding-top: 56px; /* Account for fixed navbar */
       background-color: #2c2c2c;
+      user-select: none; /* Prevent text selection on mobile */
+      -webkit-user-select: none;
     }
     
     .game-container {
       background-color: #3c3c3c;
       border-radius: 8px;
-      padding: 20px;
-      margin: 20px 0;
+      padding: 15px;
+      margin: 10px 0;
     }
     
     #c {
@@ -26,16 +28,22 @@
       border-radius: 4px;
       max-width: 100%;
       height: auto;
+      display: block;
+      margin: 0 auto;
+      touch-action: none; /* Prevent scrolling on touch */
     }
     
     .controls {
-      margin-bottom: 20px;
+      margin-bottom: 15px;
+      text-align: center;
     }
     
     .btn-generate {
       background-color: #8B4513;
       border-color: #8B4513;
       color: white;
+      font-size: 0.9rem;
+      padding: 8px 16px;
     }
     
     .btn-generate:hover {
@@ -47,6 +55,175 @@
     .instructions {
       color: #ccc;
       margin-top: 15px;
+      font-size: 0.85rem;
+    }
+
+    /* Virtual Gamepad Styles */
+    .virtual-gamepad {
+      display: none;
+      position: fixed;
+      bottom: 20px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: rgba(60, 60, 60, 0.9);
+      border-radius: 20px;
+      padding: 15px;
+      z-index: 1000;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+    }
+
+    .dpad {
+      display: grid;
+      grid-template-columns: repeat(3, 60px);
+      grid-template-rows: repeat(3, 60px);
+      gap: 5px;
+      position: relative;
+    }
+
+    .dpad-btn {
+      background: linear-gradient(145deg, #555, #333);
+      border: none;
+      border-radius: 12px;
+      color: white;
+      font-size: 18px;
+      font-weight: bold;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      transition: all 0.1s;
+      user-select: none;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    .dpad-btn:active {
+      background: linear-gradient(145deg, #333, #555);
+      transform: scale(0.95);
+    }
+
+    .dpad-btn:disabled {
+      opacity: 0.3;
+      cursor: not-allowed;
+    }
+
+    .dpad-up { grid-column: 2; grid-row: 1; }
+    .dpad-left { grid-column: 1; grid-row: 2; }
+    .dpad-center { 
+      grid-column: 2; 
+      grid-row: 2; 
+      background: rgba(139, 69, 19, 0.3);
+      cursor: default;
+    }
+    .dpad-right { grid-column: 3; grid-row: 2; }
+    .dpad-down { grid-column: 2; grid-row: 3; }
+
+    /* Show gamepad on touch devices */
+    @media (hover: none) and (pointer: coarse), (max-width: 768px) {
+      .virtual-gamepad {
+        display: block !important;
+      }
+      
+      .instructions {
+        padding-bottom: 140px; /* Make room for gamepad */
+      }
+    }
+    
+    /* Force show on very small screens */
+    @media (max-width: 480px) {
+      .virtual-gamepad {
+        display: block !important;
+      }
+    }
+
+    /* Mobile responsive adjustments */
+    @media (max-width: 768px) {
+      body {
+        padding-top: 50px;
+      }
+      
+      .navbar-brand {
+        font-size: 1.1rem;
+      }
+      
+      .navbar small {
+        font-size: 0.7rem;
+      }
+      
+      .game-container {
+        padding: 10px;
+        margin: 10px 5px;
+      }
+      
+      .btn-generate {
+        font-size: 0.8rem;
+        padding: 6px 12px;
+      }
+      
+      .instructions h5 {
+        font-size: 1rem;
+      }
+      
+      .instructions {
+        font-size: 0.75rem;
+        padding-bottom: 150px; /* Extra space for gamepad */
+      }
+      
+      /* Optimize canvas for mobile */
+      #c {
+        max-width: 95vw;
+        max-height: 60vh;
+        width: auto !important;
+        height: auto !important;
+      }
+    }
+
+    /* Portrait mobile specific optimizations */
+    @media (max-width: 480px) and (orientation: portrait) {
+      .game-container {
+        padding: 5px;
+        margin: 5px 2px;
+      }
+      
+      #c {
+        max-width: 98vw;
+        max-height: 55vh;
+      }
+      
+      .dpad {
+        grid-template-columns: repeat(3, 50px);
+        grid-template-rows: repeat(3, 50px);
+        gap: 8px;
+      }
+      
+      .dpad-btn {
+        font-size: 16px;
+        border-radius: 10px;
+      }
+      
+      .virtual-gamepad {
+        bottom: 10px;
+        padding: 10px;
+      }
+      
+      .instructions {
+        padding-bottom: 160px;
+      }
+    }
+
+    @media (max-width: 480px) {
+      .dpad {
+        grid-template-columns: repeat(3, 50px);
+        grid-template-rows: repeat(3, 50px);
+      }
+      
+      .dpad-btn {
+        font-size: 16px;
+      }
+      
+      .virtual-gamepad {
+        bottom: 15px;
+        padding: 12px;
+      }
     }
   </style>
 </head>
@@ -54,7 +231,7 @@
   <nav class="navbar navbar-dark bg-dark fixed-top">
     <div class="container-fluid">
       <a class="navbar-brand" href="#">🏰 Fabric Dungeon</a>
-      <small class="text-muted">Use arrow keys to move • Reach the finish to win</small>
+      <small class="text-muted">Use arrow keys or swipe to move • Reach the finish to win</small>
     </div>
   </nav>
 
@@ -74,7 +251,7 @@
         <div class="instructions">
           <h5>How to Play:</h5>
           <ul>
-            <li>Use arrow keys to move your knight (🛡️) around the dungeon</li>
+            <li>Use arrow keys (single-step movement), swipe gestures, or virtual gamepad to move your knight (🛡️)</li>
             <li>Navigate through floors (dark areas) and doors</li>
             <li>Avoid walls (brown blocks)</li>
             <li>Reach the finish tile (✨) to win and generate a new dungeon</li>
@@ -82,6 +259,17 @@
           </ul>
         </div>
       </div>
+    </div>
+  </div>
+
+  <!-- Virtual Gamepad for Mobile -->
+  <div class="virtual-gamepad" id="virtual-gamepad">
+    <div class="dpad">
+      <button class="dpad-btn dpad-up" data-direction="up">▲</button>
+      <button class="dpad-btn dpad-left" data-direction="left">◀</button>
+      <div class="dpad-center"></div>
+      <button class="dpad-btn dpad-right" data-direction="right">▶</button>
+      <button class="dpad-btn dpad-down" data-direction="down">▼</button>
     </div>
   </div>
 
