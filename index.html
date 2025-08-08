@@ -165,6 +165,48 @@
       
       .instructions {
         font-size: 0.75rem;
+        padding-bottom: 150px; /* Extra space for gamepad */
+      }
+      
+      /* Optimize canvas for mobile */
+      #c {
+        max-width: 95vw;
+        max-height: 60vh;
+        width: auto !important;
+        height: auto !important;
+      }
+    }
+
+    /* Portrait mobile specific optimizations */
+    @media (max-width: 480px) and (orientation: portrait) {
+      .game-container {
+        padding: 5px;
+        margin: 5px 2px;
+      }
+      
+      #c {
+        max-width: 98vw;
+        max-height: 55vh;
+      }
+      
+      .dpad {
+        grid-template-columns: repeat(3, 50px);
+        grid-template-rows: repeat(3, 50px);
+        gap: 8px;
+      }
+      
+      .dpad-btn {
+        font-size: 16px;
+        border-radius: 10px;
+      }
+      
+      .virtual-gamepad {
+        bottom: 10px;
+        padding: 10px;
+      }
+      
+      .instructions {
+        padding-bottom: 160px;
       }
     }
 
@@ -209,7 +251,7 @@
         <div class="instructions">
           <h5>How to Play:</h5>
           <ul>
-            <li>Use arrow keys, swipe gestures, or virtual gamepad to move your knight (🛡️)</li>
+            <li>Use arrow keys (single-step movement), swipe gestures, or virtual gamepad to move your knight (🛡️)</li>
             <li>Navigate through floors (dark areas) and doors</li>
             <li>Avoid walls (brown blocks)</li>
             <li>Reach the finish tile (✨) to win and generate a new dungeon</li>
