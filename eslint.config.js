@@ -13,6 +13,7 @@ export default [
         window: 'readonly',
         requestAnimationFrame: 'readonly',
         setTimeout: 'readonly',
+        clearTimeout: 'readonly',
         clearInterval: 'readonly',
         setInterval: 'readonly'
       }

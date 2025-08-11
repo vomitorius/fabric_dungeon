@@ -74,21 +74,17 @@ window.fabricCanvas = canvas;
 FabricObject.prototype.transparentCorners = false;
 
 // Game state
-let knightPlaced = false;
 let knight = null;
 let dungeon = null;
-let finishPlaced = false;
 let tileSize = 32;
 
 // Movement state
-let left = 0, right = 0, up = 0, down = 0;
 let x, y;
 let speed = tileSize;
 
 // Touch and gamepad state
 let touchStartX = null;
 let touchStartY = null;
-let gamepadPressed = new Set();
 let keyPressed = new Set();
 
 // Calculate optimal tile size based on canvas size - Improved for mobile
@@ -163,7 +159,6 @@ async function startGame() {
     for (let j = 0; j < dungeon.tiles[i].length && !knightPlacementFound; j++) {
       if (dungeon.tiles[i][j].type === 'floor') {
         knightPlacementFound = true;
-        knightPlaced = true;
         spritesToCreate.push({ type: 'knight', x: i, y: j, isKnight: true });
         x = i * tileSize;
         y = j * tileSize;
@@ -191,7 +186,6 @@ async function startGame() {
         if (!(i * tileSize === x && j * tileSize === y)) {
           dungeon.tiles[i][j].type = 'finish';
           finishPlacementFound = true;
-          finishPlaced = true;
           spritesToCreate.push({ type: 'finish', x: i, y: j });
           console.log('Finish will be placed at grid:', i, j);
         }
@@ -260,40 +254,6 @@ async function createSpriteOptimized(type, left, top, isKnight = false) {
   } catch (error) {
     console.error(`Failed to load image: ${type}`, error);
     return null;
-  }
-}
-
-async function createSprite(type, left, top) {
-  console.log(`Creating sprite: ${type} at ${left}, ${top}`);
-  try {
-    const img = await FabricImage.fromURL(`/img/${type}.png`, {
-      crossOrigin: 'anonymous'
-    });
-    console.log(`Image loaded: ${type}`, img);
-    
-    // Ensure proper sprite sizing and centering
-    img.set({
-      width: tileSize,
-      height: tileSize,
-      left: left * tileSize,
-      top: top * tileSize,
-      originX: 'left',
-      originY: 'top',
-      selectable: false,
-      // Ensure sprites scale properly and maintain aspect ratio
-      scaleX: tileSize / img.width,
-      scaleY: tileSize / img.height
-    });
-    
-    if (type === 'knight') {
-      knight = img;
-      console.log('Knight sprite created and assigned');
-    }
-    
-    canvas.add(img);
-    console.log(`Added ${type} to canvas, total objects:`, canvas.getObjects().length);
-  } catch (error) {
-    console.error(`Failed to load image: ${type}`, error);
   }
 }
 
@@ -397,72 +357,29 @@ canvasElement.addEventListener('touchend', (e) => {
 // Virtual gamepad event handlers
 const gamepadButtons = document.querySelectorAll('.dpad-btn');
 
-gamepadButtons.forEach(button => {
+function bindGamepadButton(button, direction) {
+  const activate = (e) => {
+    e.preventDefault();
+    button.classList.add('active');
+    triggerSingleStepMovement(direction);
+  };
+
+  const deactivate = (e) => {
+    e.preventDefault();
+    button.classList.remove('active');
+  };
+
+  button.addEventListener('pointerdown', activate);
+  button.addEventListener('pointerup', deactivate);
+  button.addEventListener('pointerleave', deactivate);
+}
+
+gamepadButtons.forEach((button) => {
   const direction = button.dataset.direction;
-  if (!direction) return;
-  
-  // Use click for single-step movement instead of continuous press
-  button.addEventListener('touchstart', (e) => {
-    e.preventDefault();
-    button.classList.add('active');
-    // Trigger single movement step
-    triggerSingleStepMovement(direction);
-  });
-  
-  button.addEventListener('touchend', (e) => {
-    e.preventDefault();
-    button.classList.remove('active');
-  });
-  
-  button.addEventListener('touchcancel', (e) => {
-    e.preventDefault();
-    button.classList.remove('active');
-  });
-  
-  // Also support mouse events for desktop testing
-  button.addEventListener('mousedown', (e) => {
-    e.preventDefault();
-    button.classList.add('active');
-    // Trigger single movement step
-    triggerSingleStepMovement(direction);
-  });
-  
-  button.addEventListener('mouseup', (e) => {
-    e.preventDefault();
-    button.classList.remove('active');
-  });
-  
-  button.addEventListener('mouseleave', (e) => {
-    e.preventDefault();
-    button.classList.remove('active');
-  });
-});
-
-// Helper functions for movement
-function setDirectionState(direction, state) {
-  switch (direction) {
-    case 'left':
-      left = state;
-      break;
-    case 'up':
-      up = state;
-      break;
-    case 'right':
-      right = state;
-      break;
-    case 'down':
-      down = state;
-      break;
+  if (direction) {
+    bindGamepadButton(button, direction);
   }
-}
-
-function triggerMovement(direction) {
-  // Quick movement trigger for swipe gestures
-  setDirectionState(direction, 1);
-  setTimeout(() => {
-    setDirectionState(direction, 0);
-  }, 100);
-}
+});
 
 function triggerSingleStepMovement(direction) {
   // Single step movement for touch controls
@@ -513,7 +430,6 @@ function triggerSingleStepMovement(direction) {
       if (tileType === 'finish') {
         console.log('You win! Generating new dungeon...');
         // Prevent multiple triggers by temporarily disabling movement
-        const originalKnight = knight;
         knight = null;
         
         setTimeout(async () => {
@@ -546,16 +462,8 @@ function resetGame() {
   console.log('Resetting game state...');
   
   // Reset game state flags
-  knightPlaced = false;
-  finishPlaced = false;
   knight = null;
   dungeon = null;
-  
-  // Reset movement states
-  left = 0; 
-  right = 0; 
-  up = 0; 
-  down = 0;
   
   // Clear keyboard state
   keyPressed.clear();
