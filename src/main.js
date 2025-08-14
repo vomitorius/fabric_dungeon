@@ -1,263 +1,235 @@
-import { Canvas, FabricImage, FabricObject } from 'fabric';
+import * as PIXI from 'pixi.js';
 import Dungeoneer from 'dungeoneer';
 
-// Initialize canvas
-const canvas = new Canvas('c', {
-  selection: false,
-  backgroundColor: '#3C3C3C',
-  renderOnAddRemove: false
-});
+let app;
+let mapContainer;
+let knight = null;
+let dungeon = null;
+let tileSize = 32;
+let x = 0;
+let y = 0;
+let speed = tileSize;
 
-// Calculate responsive canvas size - Improved for mobile
+const textures = {};
+
+let touchStartX = null;
+let touchStartY = null;
+const keyPressed = new Set();
+
 function getResponsiveCanvasSize() {
   const container = document.getElementById('content');
-  const containerWidth = container.offsetWidth - 30; // Account for padding
-  const containerHeight = window.innerHeight - 200; // Account for UI elements
-  
-  // Detect mobile portrait mode
-  const isMobilePortrait = window.innerWidth < 768 && window.innerHeight > window.innerWidth;
-  
+  const containerWidth = container.offsetWidth - 30;
+  const containerHeight = window.innerHeight - 200;
+
+  const isMobilePortrait =
+    window.innerWidth < 768 && window.innerHeight > window.innerWidth;
+
   if (isMobilePortrait) {
-    // For mobile portrait, prioritize width and create a more square layout
     const maxSize = Math.min(containerWidth, containerHeight * 0.6);
     return {
       width: maxSize,
-      height: Math.floor(maxSize * 0.85) // Slightly taller than wide for mobile
+      height: Math.floor(maxSize * 0.85),
     };
   } else {
-    // For desktop/landscape, use existing logic
     const maxWidth = Math.min(containerWidth, 1050);
     let width = maxWidth;
-    let height = Math.floor(maxWidth * 0.67); // Roughly 3:2 aspect ratio
-    
-    // Ensure it fits in viewport height
+    let height = Math.floor(maxWidth * 0.67);
+
     if (height > containerHeight) {
       height = containerHeight;
       width = Math.floor(height * 1.5);
     }
-    
-    // Ensure minimum viable size
+
     const minTileSize = 16;
     const minGridWidth = 21;
     const minGridHeight = 15;
-    
+
     if (width < minGridWidth * minTileSize) {
       width = minGridWidth * minTileSize;
     }
     if (height < minGridHeight * minTileSize) {
       height = minGridHeight * minTileSize;
     }
-    
+
     return { width, height };
   }
 }
 
-// Set responsive canvas size
 function setResponsiveCanvasSize() {
   const { width, height } = getResponsiveCanvasSize();
-  canvas.setWidth(width);
-  canvas.setHeight(height);
-  
-  // Update CSS to ensure proper scaling
-  const canvasElement = document.getElementById('c');
+  app.renderer.resize(width, height);
+  const canvasElement = app.view;
   canvasElement.style.maxWidth = '100%';
   canvasElement.style.height = 'auto';
 }
 
-// Initialize canvas size
-setResponsiveCanvasSize();
-
-// Make canvas globally accessible for debugging
-window.fabricCanvas = canvas;
-
-// Set default object properties
-FabricObject.prototype.transparentCorners = false;
-
-// Game state
-let knight = null;
-let dungeon = null;
-let tileSize = 32;
-
-// Movement state
-let x, y;
-let speed = tileSize;
-
-// Touch and gamepad state
-let touchStartX = null;
-let touchStartY = null;
-let keyPressed = new Set();
-
-// Calculate optimal tile size based on canvas size - Improved for mobile
 function calculateTileSize() {
   const { width, height } = getResponsiveCanvasSize();
-  const isMobilePortrait = window.innerWidth < 768 && window.innerHeight > window.innerWidth;
-  
+  const isMobilePortrait =
+    window.innerWidth < 768 && window.innerHeight > window.innerWidth;
+
   if (isMobilePortrait) {
-    // For mobile, use larger tiles for better visibility
-    // Aim for around 15x13 grid on mobile for better playability
     let preferredTileSize = Math.min(
-      Math.floor(width / 15),  // 15 tiles wide
-      Math.floor(height / 13)  // 13 tiles high
+      Math.floor(width / 15),
+      Math.floor(height / 13),
     );
-    
-    // Ensure mobile tiles are at least 20px for touch interaction
     preferredTileSize = Math.max(20, Math.min(preferredTileSize, 40));
     return preferredTileSize;
   } else {
-    // Desktop logic - allow for more tiles and smaller sizes
     let preferredTileSize = Math.min(
-      Math.floor(width / 33), // 33 tiles wide maximum
-      Math.floor(height / 23)  // 23 tiles high maximum
+      Math.floor(width / 33),
+      Math.floor(height / 23),
     );
-    
-    // Ensure reasonable bounds for desktop
     preferredTileSize = Math.max(16, Math.min(preferredTileSize, 48));
     return preferredTileSize;
   }
 }
 
+async function loadTextures() {
+  const names = ['knight', 'wall', 'door', 'finish'];
+  for (const name of names) {
+    textures[name] = await PIXI.Assets.load(`/img/${name}.png`);
+  }
+}
+
+function createSprite(type, gridX, gridY) {
+  const sprite = new PIXI.Sprite(textures[type]);
+  sprite.width = tileSize;
+  sprite.height = tileSize;
+  sprite.x = gridX * tileSize;
+  sprite.y = gridY * tileSize;
+  mapContainer.addChild(sprite);
+  return sprite;
+}
+
 async function startGame() {
-  console.log('Starting new game...');
-  
-  // Calculate responsive tile size and canvas size
   tileSize = calculateTileSize();
   speed = tileSize;
   setResponsiveCanvasSize();
-  
-  // Generate dungeon using dungeoneer with responsive dimensions
-  const maxTilesWidth = Math.floor(canvas.width / tileSize);
-  const maxTilesHeight = Math.floor(canvas.height / tileSize);
-  
-  // Ensure odd dimensions for proper maze generation and reasonable minimums
-  const dungeonWidth = Math.max(15, 2 * Math.floor((maxTilesWidth - 1) / 2) + 1);
-  const dungeonHeight = Math.max(11, 2 * Math.floor((maxTilesHeight - 1) / 2) + 1);
 
-  console.log(`Generating dungeon: ${dungeonWidth}x${dungeonHeight}, tileSize: ${tileSize}`);
+  await loadTextures();
 
-  try {
-    dungeon = Dungeoneer.build({
-      width: dungeonWidth,
-      height: dungeonHeight,
-    });
-  } catch (error) {
-    console.error('Failed to generate dungeon:', error);
-    return;
-  }
+  const maxTilesWidth = Math.floor(app.renderer.width / tileSize);
+  const maxTilesHeight = Math.floor(app.renderer.height / tileSize);
 
-  if (!dungeon || !dungeon.tiles) {
-    console.error('Invalid dungeon generated');
-    return;
-  }
+  const dungeonWidth = Math.max(
+    15,
+    2 * Math.floor((maxTilesWidth - 1) / 2) + 1,
+  );
+  const dungeonHeight = Math.max(
+    11,
+    2 * Math.floor((maxTilesHeight - 1) / 2) + 1,
+  );
 
-  // Collect all sprites to create in parallel
-  const spritesToCreate = [];
-  let knightPlacementFound = false;
-  let finishPlacementFound = false;
-  
-  // Place knight at first floor tile
-  for (let i = 0; i < dungeon.tiles.length && !knightPlacementFound; i++) {
-    for (let j = 0; j < dungeon.tiles[i].length && !knightPlacementFound; j++) {
-      if (dungeon.tiles[i][j].type === 'floor') {
-        knightPlacementFound = true;
-        spritesToCreate.push({ type: 'knight', x: i, y: j, isKnight: true });
-        x = i * tileSize;
-        y = j * tileSize;
-        console.log('Knight will be placed at grid:', i, j, 'pixels:', x, y);
-      }
-    }
-  }
-  
-  // Add walls and doors
+  dungeon = Dungeoneer.build({
+    width: dungeonWidth,
+    height: dungeonHeight,
+  });
+
+  mapContainer.removeChildren();
+  knight = null;
+
+  let knightPlaced = false;
+  let finishPlaced = false;
+
   for (let i = 0; i < dungeon.tiles.length; i++) {
     for (let j = 0; j < dungeon.tiles[i].length; j++) {
-      if (dungeon.tiles[i][j].type === 'wall') {
-        spritesToCreate.push({ type: 'wall', x: i, y: j });
-      } else if (dungeon.tiles[i][j].type === 'door') {
-        spritesToCreate.push({ type: 'door', x: i, y: j });
+      const tile = dungeon.tiles[i][j].type;
+      if (tile === 'wall' || tile === 'door') {
+        createSprite(tile, i, j);
       }
     }
   }
-  
-  // Place finish at last floor tile (search from bottom-right)
-  for (let i = dungeon.tiles.length - 1; i >= 0 && !finishPlacementFound; i--) {
-    for (let j = dungeon.tiles[i].length - 1; j >= 0 && !finishPlacementFound; j--) {
+
+  for (let i = 0; i < dungeon.tiles.length && !knightPlaced; i++) {
+    for (let j = 0; j < dungeon.tiles[i].length && !knightPlaced; j++) {
       if (dungeon.tiles[i][j].type === 'floor') {
-        // Make sure it's not the knight's position
-        if (!(i * tileSize === x && j * tileSize === y)) {
-          dungeon.tiles[i][j].type = 'finish';
-          finishPlacementFound = true;
-          spritesToCreate.push({ type: 'finish', x: i, y: j });
-          console.log('Finish will be placed at grid:', i, j);
-        }
+        knightPlaced = true;
+        x = i * tileSize;
+        y = j * tileSize;
+        knight = createSprite('knight', i, j);
       }
     }
   }
 
-  if (!knightPlacementFound) {
-    console.error('Could not place knight - no floor tiles found!');
-    return;
-  }
-
-  if (!finishPlacementFound) {
-    console.error('Could not place finish - no suitable floor tiles found!');
-    return;
-  }
-
-  console.log(`Creating ${spritesToCreate.length} sprites in batches...`);
-  
-  // Create sprites in parallel batches for better performance
-  const batchSize = 20;
-  for (let i = 0; i < spritesToCreate.length; i += batchSize) {
-    const batch = spritesToCreate.slice(i, i + batchSize);
-    
-    // Process batch in parallel
-    const spritePromises = batch.map(sprite => 
-      createSpriteOptimized(sprite.type, sprite.x, sprite.y, sprite.isKnight)
-    );
-    
-    await Promise.all(spritePromises);
-  }
-
-  console.log('All sprites created, rendering canvas...');
-  // Render the canvas after all images are loaded
-  canvas.renderAll();
-  requestAnimationFrame(render);
-}
-
-async function createSpriteOptimized(type, left, top, isKnight = false) {
-  try {
-    const img = await FabricImage.fromURL(`/img/${type}.png`, {
-      crossOrigin: 'anonymous'
-    });
-    
-    // Ensure proper sprite sizing and centering
-    img.set({
-      width: tileSize,
-      height: tileSize,
-      left: left * tileSize,
-      top: top * tileSize,
-      originX: 'left',
-      originY: 'top',
-      selectable: false,
-      // Ensure sprites scale properly and maintain aspect ratio
-      scaleX: tileSize / img.width,
-      scaleY: tileSize / img.height
-    });
-    
-    if (isKnight) {
-      knight = img;
-      console.log('Knight sprite created and assigned');
+  for (let i = dungeon.tiles.length - 1; i >= 0 && !finishPlaced; i--) {
+    for (let j = dungeon.tiles[i].length - 1; j >= 0 && !finishPlaced; j--) {
+      if (dungeon.tiles[i][j].type === 'floor') {
+        dungeon.tiles[i][j].type = 'finish';
+        finishPlaced = true;
+        createSprite('finish', i, j);
+      }
     }
-    
-    canvas.add(img);
-    return img;
-  } catch (error) {
-    console.error(`Failed to load image: ${type}`, error);
-    return null;
+  }
+
+  app.ticker.add(() => {
+    if (knight) {
+      knight.x = x;
+      knight.y = y;
+    }
+  });
+}
+
+function triggerSingleStepMovement(direction) {
+  if (!knight || !dungeon) {
+    return;
+  }
+
+  let newX = x;
+  let newY = y;
+
+  switch (direction) {
+    case 'left':
+      newX = x - speed;
+      break;
+    case 'up':
+      newY = y - speed;
+      break;
+    case 'right':
+      newX = x + speed;
+      break;
+    case 'down':
+      newY = y + speed;
+      break;
+  }
+
+  const moveX = Math.floor(newX / tileSize);
+  const moveY = Math.floor(newY / tileSize);
+
+  if (
+    moveX >= 0 &&
+    moveX < dungeon.tiles.length &&
+    moveY >= 0 &&
+    moveY < dungeon.tiles[moveX].length
+  ) {
+    const tileType = dungeon.tiles[moveX][moveY].type;
+    if (
+      tileType === 'floor' ||
+      tileType === 'door' ||
+      tileType === 'finish'
+    ) {
+      x = newX;
+      y = newY;
+
+      if (tileType === 'finish') {
+        setTimeout(async () => {
+          resetGame();
+          await startGame();
+        }, 1000);
+      }
+    }
   }
 }
 
-// Keyboard event handlers - Single-step movement
+function resetGame() {
+  knight = null;
+  dungeon = null;
+  keyPressed.clear();
+  mapContainer.removeChildren();
+  x = 0;
+  y = 0;
+}
+
 document.addEventListener('keyup', (e) => {
   switch (e.code) {
     case 'ArrowLeft':
@@ -270,14 +242,13 @@ document.addEventListener('keyup', (e) => {
 });
 
 document.addEventListener('keydown', (e) => {
-  // Prevent repeated keydown events while holding key
   if (keyPressed.has(e.code)) {
     e.preventDefault();
     return;
   }
-  
+
   keyPressed.add(e.code);
-  
+
   switch (e.code) {
     case 'ArrowLeft':
       triggerSingleStepMovement('left');
@@ -295,66 +266,77 @@ document.addEventListener('keydown', (e) => {
   e.preventDefault();
 });
 
-// Touch event handlers for swipe gestures
+document.addEventListener('DOMContentLoaded', async () => {
+  app = new PIXI.Application({
+    view: document.getElementById('c'),
+    background: '#3C3C3C',
+  });
+  mapContainer = new PIXI.Container();
+  app.stage.addChild(mapContainer);
+
+  setResponsiveCanvasSize();
+  console.log('Starting Endless Dungeon...');
+  await startGame();
+});
+
 const canvasElement = document.getElementById('c');
+canvasElement.addEventListener(
+  'touchstart',
+  (e) => {
+    e.preventDefault();
+    const touch = e.touches[0];
+    touchStartX = touch.clientX;
+    touchStartY = touch.clientY;
+  },
+  { passive: false },
+);
 
-canvasElement.addEventListener('touchstart', (e) => {
-  e.preventDefault();
-  const touch = e.touches[0];
-  touchStartX = touch.clientX;
-  touchStartY = touch.clientY;
-}, { passive: false });
+canvasElement.addEventListener(
+  'touchmove',
+  (e) => {
+    e.preventDefault();
+  },
+  { passive: false },
+);
 
-canvasElement.addEventListener('touchmove', (e) => {
-  e.preventDefault();
-}, { passive: false });
+canvasElement.addEventListener(
+  'touchend',
+  (e) => {
+    e.preventDefault();
 
-canvasElement.addEventListener('touchend', (e) => {
-  e.preventDefault();
-  
-  if (touchStartX === null || touchStartY === null) {
-    return;
-  }
-  
-  const touch = e.changedTouches[0];
-  const touchEndX = touch.clientX;
-  const touchEndY = touch.clientY;
-  
-  const diffX = touchStartX - touchEndX;
-  const diffY = touchStartY - touchEndY;
-  
-  // Minimum swipe distance
-  const minSwipeDistance = 30;
-  
-  if (Math.abs(diffX) > Math.abs(diffY)) {
-    // Horizontal swipe
-    if (Math.abs(diffX) > minSwipeDistance) {
-      if (diffX > 0) {
-        // Swipe left
-        triggerSingleStepMovement('left');
-      } else {
-        // Swipe right
-        triggerSingleStepMovement('right');
+    if (touchStartX === null || touchStartY === null) {
+      return;
+    }
+
+    const touch = e.changedTouches[0];
+    const diffX = touchStartX - touch.clientX;
+    const diffY = touchStartY - touch.clientY;
+    const minSwipeDistance = 30;
+
+    if (Math.abs(diffX) > Math.abs(diffY)) {
+      if (Math.abs(diffX) > minSwipeDistance) {
+        if (diffX > 0) {
+          triggerSingleStepMovement('left');
+        } else {
+          triggerSingleStepMovement('right');
+        }
+      }
+    } else {
+      if (Math.abs(diffY) > minSwipeDistance) {
+        if (diffY > 0) {
+          triggerSingleStepMovement('up');
+        } else {
+          triggerSingleStepMovement('down');
+        }
       }
     }
-  } else {
-    // Vertical swipe
-    if (Math.abs(diffY) > minSwipeDistance) {
-      if (diffY > 0) {
-        // Swipe up
-        triggerSingleStepMovement('up');
-      } else {
-        // Swipe down
-        triggerSingleStepMovement('down');
-      }
-    }
-  }
-  
-  touchStartX = null;
-  touchStartY = null;
-}, { passive: false });
 
-// Virtual gamepad event handlers
+    touchStartX = null;
+    touchStartY = null;
+  },
+  { passive: false },
+);
+
 const gamepadButtons = document.querySelectorAll('.dpad-btn');
 
 function bindGamepadButton(button, direction) {
@@ -381,141 +363,27 @@ gamepadButtons.forEach((button) => {
   }
 });
 
-function triggerSingleStepMovement(direction) {
-  // Single step movement for touch controls
-  if (!knight || !dungeon) {
-    console.log('Movement attempted but game not ready');
-    return;
-  }
-
-  let newX = x;
-  let newY = y;
-  
-  switch (direction) {
-    case 'left':
-      newX = x - speed;
-      break;
-    case 'up':
-      newY = y - speed;
-      break;
-    case 'right':
-      newX = x + speed;
-      break;
-    case 'down':
-      newY = y + speed;
-      break;
-  }
-  
-  const moveX = Math.floor(newX / tileSize);
-  const moveY = Math.floor(newY / tileSize);
-  
-  // Check bounds and tile type
-  if (moveX >= 0 && moveX < dungeon.tiles.length && 
-      moveY >= 0 && moveY < dungeon.tiles[moveX].length) {
-    
-    const tileType = dungeon.tiles[moveX][moveY].type;
-    
-    if (tileType === 'floor' || tileType === 'door' || tileType === 'finish') {
-      x = newX;
-      y = newY;
-      
-      knight.set({
-        left: x,
-        top: y
-      });
-      
-      canvas.renderAll();
-      
-      // Check for win condition
-      if (tileType === 'finish') {
-        console.log('You win! Generating new dungeon...');
-        // Prevent multiple triggers by temporarily disabling movement
-        knight = null;
-        
-        setTimeout(async () => {
-          resetGame();
-          await startGame();
-        }, 1000);
-      }
-    }
-  }
-}
-
-// Game render loop - Updated for single-step keyboard movement
-function render() {
-  if (!knight || !dungeon) {
-    requestAnimationFrame(render);
-    return;
-  }
-
-  // No continuous movement needed since both keyboard and touch use single-step
-  knight.set({
-    left: x,
-    top: y
-  });
-  
-  canvas.renderAll();
-  requestAnimationFrame(render);
-}
-
-function resetGame() {
-  console.log('Resetting game state...');
-  
-  // Reset game state flags
-  knight = null;
-  dungeon = null;
-  
-  // Clear keyboard state
-  keyPressed.clear();
-  
-  // Clear canvas completely
-  canvas.clear();
-  canvas.backgroundColor = '#3C3C3C';
-  
-  // Reset position coordinates
-  x = 0;
-  y = 0;
-  
-  console.log('Game state reset complete');
-}
-
-// Initialize game when DOM is ready
-document.addEventListener('DOMContentLoaded', async () => {
-  console.log('Starting Fabric Dungeon...');
-  await startGame();
-});
-
-// Generate button handler
 document.getElementById('generate').addEventListener('click', async () => {
-  console.log('Generating new dungeon...');
   resetGame();
   await startGame();
 });
 
-// Handle window resize - Fixed to prevent endless regeneration
 let resizeTimeout = null;
 window.addEventListener('resize', () => {
-  // Debounce resize events to prevent excessive regeneration
   if (resizeTimeout) {
     clearTimeout(resizeTimeout);
   }
-  
-  resizeTimeout = setTimeout(() => {
+
+  resizeTimeout = setTimeout(async () => {
     const newTileSize = calculateTileSize();
     const sizeDifference = Math.abs(newTileSize - tileSize);
-    
-    // Only regenerate if there's a significant size change (more than 4px difference)
+
     if (sizeDifference > 4) {
-      console.log(`Size change detected: ${tileSize} -> ${newTileSize}, regenerating game...`);
       resetGame();
-      setTimeout(async () => {
-        await startGame();
-      }, 100);
+      await startGame();
     } else {
-      // Just resize canvas without regenerating
-      console.log('Minor size change, just resizing canvas...');
       setResponsiveCanvasSize();
-      canvas.renderAll();
     }
-  }, 250); // 250ms debounce
+  }, 250);
 });
+

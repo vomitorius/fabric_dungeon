@@ -1,6 +1,6 @@
-# Fabric Dungeon
+# Endless Dungeon
 
-A modern dungeon pixel art game starter project built with HTML5 Canvas, Fabric.js, and procedural dungeon generation.
+A modern dungeon pixel art game starter project built with HTML5 Canvas, Pixi.js, and procedural dungeon generation.
 
 ## Features
 
@@ -22,8 +22,8 @@ A modern dungeon pixel art game starter project built with HTML5 Canvas, Fabric.
 
 1. Clone the repository:
 ```bash
-git clone https://github.com/vomitorius/fabric_dungeon.git
-cd fabric_dungeon
+git clone https://github.com/vomitorius/endless_dungeon.git
+cd endless_dungeon
 ```
 
 2. Install dependencies:
@@ -65,7 +65,7 @@ npm run dev
 
 ## Technology Stack
 
-- **Fabric.js 6.x** - HTML5 Canvas library for rendering
+- **Pixi.js** - HTML5 Canvas/WebGL library for rendering
 - **Dungeoneer** - Procedural dungeon generation
 - **Vite** - Modern build tool and dev server
 - **Bootstrap 5** - UI framework
@@ -74,7 +74,7 @@ npm run dev
 ## Project Structure
 
 ```
-fabric_dungeon/
+endless_dungeon/
 ├── public/
 │   └── img/          # Game sprites and assets
 ├── src/
