@@ -58,7 +58,7 @@ function getResponsiveCanvasSize() {
 function setResponsiveCanvasSize() {
   const { width, height } = getResponsiveCanvasSize();
   app.renderer.resize(width, height);
-  const canvasElement = app.view;
+  const canvasElement = app.canvas;
   canvasElement.style.maxWidth = '100%';
   canvasElement.style.height = 'auto';
 }
